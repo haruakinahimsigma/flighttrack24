@@ -1,0 +1,12 @@
+{
+  "name": "flight-hunter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flight Hunter aircraft collecting game prototype",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

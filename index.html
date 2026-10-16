@@ -76,7 +76,7 @@ window.addEventListener("load", async function () {
     function fmt(n){return new Intl.NumberFormat("en-US").format(n)}
     function rarityColor(r){return ({COMMON:"#a8b4c3",UNCOMMON:"#78e2b1",RARE:"#69c9ff",EPIC:"#d1a0ff",LEGENDARY:"#ffd16a"})[r]||"#a8b4c3"}
     function toast(s){const el=document.getElementById("toast");el.textContent=s;el.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove("show"),2400)}
-    function iconFor(a,selected=false){return L.divIcon({className:"",html:'<div class="plane-marker '+(selected?"selected":"")+'" style="transform:rotate('+a.heading+'deg)">✈</div>',iconSize:[32,32],iconAnchor:[16,16]})}
+    function iconFor(a,selected=false){return L.divIcon({className:"",html:'<div class="plane-marker '+(selected?"selected":"")+'" style="transform:rotate('+a.heading+'deg)"><svg viewBox="0 0 24 28" width="22" height="26" aria-hidden="true"><path fill="currentColor" d="M12 1.5 15 10l7 4.1v2.2l-7-2.1-1.1 7.2 3.1 2v1.8L12 23.5l-5 1.7v-1.8l3.1-2L9 14.2l-7 2.1v-2.2L9 10z"/></svg></div>',iconSize:[32,32],iconAnchor:[16,16]})}
     const map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([35.5494,139.7798],8);
     const osmTiles=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
     let fallbackTilesAdded=false;
@@ -117,7 +117,7 @@ window.addEventListener("load", async function () {
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
       if(!Array.isArray(data.aircraft))throw new Error("Unexpected live data format");
-      aircraft=data.aircraft.filter(a=>Number.isFinite(a.lat)&&Number.isFinite(a.lon)).map(normalizeLiveAircraft);
+      aircraft=data.aircraft.filter(a=>Number.isFinite(a.lat)&&Number.isFinite(a.lon)&&a.alt_baro!=="ground"&&((Number.isFinite(a.alt_baro)&&a.alt_baro>150)||(Number.isFinite(a.alt_geom)&&a.alt_geom>150))&&Number.isFinite(a.track)&&Number.isFinite(a.gs)&&a.gs>35).map(normalizeLiveAircraft);
       renderAircraftMarkers();
       hasConnected=true;
       document.getElementById("feedStatus").textContent="LIVE ADS-B · "+data.source;

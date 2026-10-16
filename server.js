@@ -113,6 +113,12 @@ async function liveAircraft(url, res) {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     res.end(JSON.stringify(data));
   } catch (error) {
+    // Keep the last successful snapshot available during brief upstream outages.
+    const previous = liveCache.get(cacheKey);
+    if (previous) {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-flight-data-stale": "1" });
+      return res.end(JSON.stringify({ ...previous.data, cached: true, stale: true, feedWarning: "Live provider temporarily unreachable; showing last successful positions." }));
+    }
     res.writeHead(502, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     res.end(JSON.stringify({ error: "Live aircraft data is temporarily unavailable.", detail: error.message, source: "adsb.lol" }));
   }

@@ -96,7 +96,7 @@ window.addEventListener("load", async function () {
      const callsign=flight.toUpperCase();
      const operators=[[/^JAL|^JL/, "Japan Airlines"],[/^ANA|^NH/, "All Nippon Airways"],[/^SIA|^SQ/, "Singapore Airlines"],[/^QFA|^QF/, "Qantas"],[/^UAL|^UA/, "United Airlines"],[/^AAL|^AA/, "American Airlines"],[/^DAL|^DL/, "Delta Air Lines"],[/^KAL|^KE/, "Korean Air"],[/^CPA|^CX/, "Cathay Pacific"],[/^EVA|^BR/, "EVA Air"],[/^THA|^TG/, "Thai Airways"]];
      const operator=operators.find(([re])=>re.test(callsign));
-     const alt=typeof raw.alt_baro==="number"?raw.alt_baro:(typeof raw.alt_geom==="number"?raw.alt_geom:null);
+     const alt=raw.alt_baro==="ground"?null:(typeof raw.alt_baro==="number"?raw.alt_baro:(typeof raw.alt_geom==="number"?raw.alt_geom:null));
      const speed=Number.isFinite(raw.gs)?Math.round(raw.gs):null;
      const heading=Number.isFinite(raw.track)?Math.round(raw.track):0;
      const vs=Number.isFinite(raw.baro_rate)?Math.round(raw.baro_rate):(Number.isFinite(raw.geom_rate)?Math.round(raw.geom_rate):null);
@@ -124,7 +124,7 @@ window.addEventListener("load", async function () {
       hasConnected=true;
       document.getElementById("feedStatus").textContent="LIVE ADS-B · "+data.source;
       document.getElementById("feedDot").style.background="var(--green)";
-      document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · Refresh every 5 seconds; route/photo references load when you select an aircraft.';
+      document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · Refresh every 8 seconds · gold markers = aircraft reported on the ground · select any aircraft for route/photo references.';
       if(selectedId){if(aircraft.some(a=>a.id===selectedId)){updateSelectedStats(aircraft.find(a=>a.id===selectedId));}else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
      }catch(error){
       // A temporary provider failure must not erase the last known aircraft or the inspector.

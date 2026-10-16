@@ -15,6 +15,71 @@ const airports = {
   KJFK: { name: "New York JFK", lat: 40.6413, lon: -73.7781 },
 };
 let liveCache = new Map();
+const infoCache = new Map();
+
+async function aircraftInfo(url, res) {
+  const callsign = String(url.searchParams.get("callsign") || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 16);
+  const hex = String(url.searchParams.get("hex") || "").trim().toLowerCase().replace(/[^a-f0-9]/g, "").slice(0, 6);
+  const reg = String(url.searchParams.get("reg") || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 12);
+  const key = [callsign, hex, reg].join(":");
+  const cached = infoCache.get(key);
+  if (cached && Date.now() - cached.time < 10 * 60 * 1000) {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    return res.end(JSON.stringify(cached.data));
+  }
+  const result = { callsign, route: null, photo: null, photoLink: null, photographer: null, photoSource: null };
+  const jobs = [];
+  if (callsign && !/^HEX\s/.test(callsign)) {
+    jobs.push((async () => {
+      try {
+        const r = await fetch("https://api.adsbdb.com/v0/callsign/" + encodeURIComponent(callsign), {
+          headers: { "accept": "application/json", "user-agent": "FlightHunter/0.3" },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (!r.ok) return;
+        const j = await r.json();
+        const f = j?.response?.flightroute || j?.flightroute || j?.response?.route || null;
+        const airport = a => a ? {
+          icao: a.icao_code || a.icao || "",
+          iata: a.iata_code || a.iata || "",
+          name: a.name || ""
+        } : null;
+        if (f && (f.origin || f.destination)) result.route = {
+          origin: airport(f.origin),
+          destination: airport(f.destination),
+          source: "adsbdb"
+        };
+      } catch (_) {}
+    })());
+  }
+  if (hex || reg) {
+    jobs.push((async () => {
+      try {
+        const endpoint = hex
+          ? "https://api.planespotters.net/pub/photos/hex/" + encodeURIComponent(hex) + (reg ? "?reg=" + encodeURIComponent(reg) : "")
+          : "https://api.planespotters.net/pub/photos/reg/" + encodeURIComponent(reg);
+        const r = await fetch(endpoint, {
+          headers: { "accept": "application/json", "user-agent": "FlightHunter/0.3 (aircraft photo lookup)" },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (!r.ok) return;
+        const j = await r.json();
+        const p = Array.isArray(j.photos) ? j.photos[0] : null;
+        if (p) {
+          result.photo = p.thumbnail_large?.src || p.thumbnail?.src || p.thumbnail?.url || p.image?.src || null;
+          result.photoLink = p.link || null;
+          result.photographer = p.photographer || null;
+          result.photoSource = "Planespotters.net";
+        }
+      } catch (_) {}
+    })());
+  }
+  await Promise.all(jobs);
+  infoCache.set(key, { time: Date.now(), data: result });
+  if (infoCache.size > 1000) infoCache.delete(infoCache.keys().next().value);
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  res.end(JSON.stringify(result));
+}
 
 async function liveAircraft(url, res) {
   const airportCode = (url.searchParams.get("airport") || "RJTT").toUpperCase();
@@ -26,7 +91,7 @@ async function liveAircraft(url, res) {
   const radius = Math.max(10, Math.min(100, Number(url.searchParams.get("radius")) || 50));
   const cacheKey = airportCode + ":" + radius;
   const cached = liveCache.get(cacheKey);
-  if (cached && Date.now() - cached.time < 12000) {
+  if (cached && Date.now() - cached.time < 3000) {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     return res.end(JSON.stringify({ ...cached.data, cached: true }));
   }
@@ -55,7 +120,7 @@ async function liveAircraft(url, res) {
 
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (url.pathname === "/api/live-aircraft") return void liveAircraft(url, res);
+  if (url.pathname === "/api/live-aircraft") return void liveAircraft(url, res);\n  if (url.pathname === "/api/aircraft-info") return void aircraftInfo(url, res);
   const pathname = decodeURIComponent(url.pathname);
   let file = path.join(root, pathname === "/" ? "index.html" : pathname.replace(/^\/+/, ""));
   if (!file.startsWith(root)) {

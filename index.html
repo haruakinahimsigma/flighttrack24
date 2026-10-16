@@ -126,13 +126,17 @@ window.addEventListener("load", async function () {
       document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · Refresh every 5 seconds; route/photo references load when you select an aircraft.';
       if(selectedId){if(aircraft.some(a=>a.id===selectedId)){updateSelectedStats(aircraft.find(a=>a.id===selectedId));}else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
      }catch(error){
-      aircraft=[];renderAircraftMarkers();selectedId=null;
-      document.getElementById("panelTitle").textContent="Live feed unavailable";
-      document.getElementById("details").innerHTML='<div class="empty">Could not load live aircraft. Check the server endpoint, then try again.</div>';
-      document.getElementById("feedStatus").textContent="ADS-B FEED UNAVAILABLE";
-      document.getElementById("feedDot").style.background="var(--red)";
-      document.getElementById("mapNote").textContent="Live data unavailable right now. No simulated aircraft are shown. Check the server endpoint and try again.";
-      if(showFailure&&!hasConnected)toast("Could not load live aircraft. Is the app server running?");
+      // A temporary provider failure must not erase the last known aircraft or the inspector.
+      if(aircraft.length){
+       document.getElementById("feedStatus").textContent="FEED DELAYED · RETRYING";
+       document.getElementById("feedDot").style.background="var(--gold)";
+       document.getElementById("mapNote").textContent="Live provider is temporarily unreachable. Keeping last known positions while retrying.";
+      }else{
+       document.getElementById("feedStatus").textContent="ADS-B FEED UNAVAILABLE";
+       document.getElementById("feedDot").style.background="var(--red)";
+       document.getElementById("mapNote").textContent="Live data unavailable right now. Retrying automatically; no simulated aircraft are shown.";
+       if(showFailure&&!hasConnected)toast("Could not load live aircraft. Retrying…");
+      }
      }finally{liveFetchInProgress=false}
     }
     function updateSelectedStats(a){const put=(id,value)=>{const e=document.getElementById(id);if(e)e.textContent=value};put("liveAltitude",a.alt===null?"N/A":fmt(a.alt)+" ft");put("liveSpeed",a.speed===null?"N/A":a.speed+" kt");put("liveHeading",a.heading+"°");put("liveVertical",a.vs===null?"N/A":(a.vs>0?"+":"")+a.vs+" ft/min")}
@@ -151,7 +155,7 @@ window.addEventListener("load", async function () {
     function showRadar(){document.getElementById("radarView").classList.add("active");document.getElementById("hangarView").classList.remove("active");document.getElementById("radarTab").classList.add("active");document.getElementById("hangarTab").classList.remove("active");setTimeout(()=>map.invalidateSize(),100)}
     function showHangar(){renderHangar();document.getElementById("hangarView").classList.add("active");document.getElementById("radarView").classList.remove("active");document.getElementById("hangarTab").classList.add("active");document.getElementById("radarTab").classList.remove("active")}
     document.getElementById("radarTab").onclick=showRadar;document.getElementById("hangarTab").onclick=showHangar;document.getElementById("seeHangar").onclick=showHangar;document.getElementById("backRadar").onclick=showRadar;document.getElementById("clearSelection").onclick=()=>{selectedId=null;Object.entries(markers).forEach(([k,m])=>m.setIcon(iconFor(aircraft.find(x=>x.id===k))));document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>'};document.getElementById("airportSelect").addEventListener("change",e=>{currentAirport=e.target.value;map.setView(airportCenters[currentAirport],8);selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Loading live aircraft for this area…</div>';loadLiveAircraft()});document.getElementById("search").addEventListener("input",renderHangar);document.getElementById("sortValue").onclick=()=>{sortDescending=!sortDescending;document.getElementById("sortValue").textContent="Sort: Value "+(sortDescending?"↓":"↑");renderHangar()};document.getElementById("resetHangar").onclick=()=>{if(confirm("Reset your local hangar? This cannot be undone.")){collection={};saveCollection();toast("Hangar reset.")}};
-    renderHangar();renderRecent();renderAircraftMarkers();loadLiveAircraft();setInterval(()=>loadLiveAircraft(false),5000);
+    renderHangar();renderRecent();renderAircraftMarkers();loadLiveAircraft();setInterval(()=>loadLiveAircraft(false),8000);
     
   } catch (error) {
     console.error("Flight Hunter startup error:",error);

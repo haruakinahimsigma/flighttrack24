@@ -88,6 +88,9 @@ async function loadLiveAircraft(showFailure=true){
   document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · ODbL data. Callsigns, registration and type may be missing; routes are not provided by this view.';
   if(selectedId){if(aircraft.some(a=>a.id===selectedId))selectAircraft(selectedId);else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
  }catch(error){
+  aircraft=[];renderAircraftMarkers();selectedId=null;
+  document.getElementById("panelTitle").textContent="Live feed unavailable";
+  document.getElementById("details").innerHTML='<div class="empty">Could not load live aircraft. Check the server endpoint, then try again.</div>';
   document.getElementById("feedStatus").textContent="ADS-B FEED UNAVAILABLE";
   document.getElementById("feedDot").style.background="var(--red)";
   document.getElementById("mapNote").textContent="Live data unavailable right now. No simulated aircraft are shown. Check the server endpoint and try again.";

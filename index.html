@@ -142,7 +142,8 @@ window.addEventListener("load", async function () {
      const speed=Number.isFinite(raw.gs)?Math.round(raw.gs):null;
      const heading=Number.isFinite(raw.track)?Math.round(raw.track):0;
      const vs=Number.isFinite(raw.baro_rate)?Math.round(raw.baro_rate):(Number.isFinite(raw.geom_rate)?Math.round(raw.geom_rate):null);
-     const type=typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code);\n      const reward=rarityForAircraft(flight,hex,reg,code,type);
+     const type=typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code);
+      const reward=rarityForAircraft(flight,hex,reg,code,type);
      return {id:"live-"+(hex||flight.replace(/[^a-z0-9]/gi,"-")),flight,airline:operator?operator[1]:"Operator not verified",type,code,reg:reg||("ICAO "+hex),regLabel:reg||"Registration unavailable",from:"",to:"",lat:raw.lat,lon:raw.lon,alt,speed,heading,vs,isGround:raw.alt_baro==="ground",livery:"Unverified livery",rarity:reward.rarity,value:reward.value,emoji:"✈",isLive:true,hex};
     }
     function renderAircraftMarkers(){

@@ -40,6 +40,6 @@ Create a Railway project from this GitHub repository. Railway will run `npm star
 ## Credits
 
 - Map rendering: [Leaflet](https://leafletjs.com/)
-- Demo map tiles: [OpenStreetMap](https://www.openstreetmap.org/copyright)
+- Map tiles: [OpenStreetMap](https://www.openstreetmap.org/copyright)
 
 This project is not affiliated with Flightradar24.

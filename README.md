@@ -2,16 +2,18 @@
 
 A responsive aircraft-collecting game prototype: radar-style map + aircraft inspector + collectible livery cards + hangar inventory.
 
-## Current status: v0.1 demo
+## Current status: v0.2 live ADS-B prototype
 
-- Interactive Leaflet map with selectable sample aircraft.
-- Aircraft inspector with callsign, airline, type, registration, route, altitude, speed, heading and vertical speed.
-- Collect button and duplicate tracking by airline + aircraft type + livery.
-- Hangar cards, rarity labels, estimated in-game value, search and sorting.
-- Collection stored locally in the current browser using localStorage.
+- Live aircraft positions from the adsb.lol ADS-B API, served through the app's `/api/live-aircraft` backend endpoint.
+- Airport selector for Haneda, Narita, Kansai, Changi, Heathrow and JFK.
+- Selectable live aircraft markers and an inspector for the fields actually available from ADS-B.
+- Live refresh every 20 seconds; the server caches provider responses briefly.
+- Collectible hangar with gameplay-only rarity/value labels and local browser storage.
 - Responsive layout for desktop and mobile screens.
 
-**The aircraft in this version are illustrative demo records, not live aircraft.** Positions and details are not verified, and values/rarities are game examples. No live flight-data provider is connected yet.
+**Data limitations:** ADS-B positions do not guarantee an airline identity, aircraft type, registration, origin or destination. Missing fields are shown as unavailable rather than invented. If the live endpoint fails, the map shows no simulated aircraft.
+
+**Data source and license:** Aircraft data is supplied by [adsb.lol](https://adsb.lol), whose public data uses the Open Database License (ODbL) 1.0. Review the [API documentation](https://api.adsb.lol/docs) and its terms before public or production use. This is a personal prototype, not affiliated with adsb.lol or Flightradar24.
 
 ## Run locally
 
@@ -29,11 +31,11 @@ Create a Railway project from this GitHub repository. Railway will run `npm star
 
 ## Next steps
 
-1. Choose a flight-data provider whose license permits this game's intended use.
-2. Replace demo records with the provider's live aircraft data.
+1. Test `/api/live-aircraft?airport=RJTT&radius=50` while the Node server is running.
+2. Validate live coverage and provider rate limits before increasing refresh frequency or radius.
 3. Add durable accounts/database storage so a hangar follows the user across devices.
 4. Improve livery matching and aircraft images using licensed sources.
-5. Tune the map and inspector against the chosen provider's actual fields and coverage.
+5. Tune the map and inspector against actual provider fields and coverage.
 
 ## Credits
 

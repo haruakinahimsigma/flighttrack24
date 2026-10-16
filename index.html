@@ -36,81 +36,118 @@
  <div id="cards" class="cards"></div><div id="emptyHangar" class="emptyhangar"><div class="emoji">🛫</div><h2>Your hangar is empty</h2><p>Return to Radar, select a flight and collect your first aircraft.</p><button id="backRadar">Explore radar</button></div>
 </main>
 <div class="toast" id="toast"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-let aircraft=[];
-const key="flightHunterHangarV1";
-let collection=loadCollection(),selectedId=null,sortDescending=true;
-function loadCollection(){try{return JSON.parse(localStorage.getItem(key)||"{}")}catch{return{}}}
-function saveCollection(){localStorage.setItem(key,JSON.stringify(collection));renderHangar();renderRecent()}
-function fmt(n){return new Intl.NumberFormat("en-US").format(n)}
-function rarityColor(r){return ({COMMON:"#a8b4c3",UNCOMMON:"#78e2b1",RARE:"#69c9ff",EPIC:"#d1a0ff",LEGENDARY:"#ffd16a"})[r]||"#a8b4c3"}
-function toast(s){const el=document.getElementById("toast");el.textContent=s;el.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove("show"),2400)}
-function iconFor(a,selected=false){return L.divIcon({className:"",html:'<div class="plane-marker '+(selected?"selected":"")+'" style="transform:rotate('+a.heading+'deg)">✈</div>',iconSize:[32,32],iconAnchor:[16,16]})}
-const map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([36.1,140.1],5);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
-const markers={};
-const airportCenters={RJTT:[35.5494,139.7798],RJAA:[35.772,140.3929],RJBB:[34.4347,135.244],WSSS:[1.3644,103.9915],EGLL:[51.47,-0.4543],KJFK:[40.6413,-73.7781]};
-let currentAirport="RJTT",hasConnected=false,liveFetchInProgress=false;
-const typeNames={A20N:"Airbus A320neo",A21N:"Airbus A321neo",A320:"Airbus A320",A321:"Airbus A321",A332:"Airbus A330-200",A333:"Airbus A330-300",A359:"Airbus A350-900",A35K:"Airbus A350-1000",A388:"Airbus A380-800",B738:"Boeing 737-800",B38M:"Boeing 737 MAX 8",B789:"Boeing 787-9",B788:"Boeing 787-8",B78X:"Boeing 787-10",B77W:"Boeing 777-300ER",B77L:"Boeing 777F",B744:"Boeing 747-400",B748:"Boeing 747-8"};
-function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function normalizeLiveAircraft(raw){
- const hex=String(raw.hex||"").trim().toUpperCase();
- const flight=String(raw.flight||"").trim()||("HEX "+(hex||"UNKNOWN"));
- const code=String(raw.t||"").trim().toUpperCase()||"UNKNOWN";
- const reg=String(raw.r||"").trim();
- const callsign=flight.toUpperCase();
- const operators=[[/^JAL|^JL/, "Japan Airlines"],[/^ANA|^NH/, "All Nippon Airways"],[/^SIA|^SQ/, "Singapore Airlines"],[/^QFA|^QF/, "Qantas"],[/^UAL|^UA/, "United Airlines"],[/^AAL|^AA/, "American Airlines"],[/^DAL|^DL/, "Delta Air Lines"],[/^KAL|^KE/, "Korean Air"],[/^CPA|^CX/, "Cathay Pacific"],[/^EVA|^BR/, "EVA Air"],[/^THA|^TG/, "Thai Airways"]];
- const operator=operators.find(([re])=>re.test(callsign));
- const alt=typeof raw.alt_baro==="number"?raw.alt_baro:(typeof raw.alt_geom==="number"?raw.alt_geom:null);
- const speed=Number.isFinite(raw.gs)?Math.round(raw.gs):null;
- const heading=Number.isFinite(raw.track)?Math.round(raw.track):0;
- const vs=Number.isFinite(raw.baro_rate)?Math.round(raw.baro_rate):(Number.isFinite(raw.geom_rate)?Math.round(raw.geom_rate):null);
- return {id:"live-"+(hex||flight.replace(/[^a-z0-9]/gi,"-")),flight,airline:operator?operator[1]:"Operator not verified",type:typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code),code,reg:reg||("ICAO "+hex),regLabel:reg||"Registration unavailable",from:"",to:"",lat:raw.lat,lon:raw.lon,alt,speed,heading,vs,livery:"Unverified livery",rarity:"COMMON",value:1000,emoji:"✈",isLive:true,hex};
-}
-function renderAircraftMarkers(){
- Object.keys(markers).forEach(k=>{map.removeLayer(markers[k]);delete markers[k]});
- aircraft.forEach(a=>{const m=L.marker([a.lat,a.lon],{icon:iconFor(a,a.id===selectedId)}).addTo(map);m.bindTooltip(esc(a.flight)+" · "+esc(a.code),{direction:"top",offset:[0,-12]});m.on("click",()=>selectAircraft(a.id));markers[a.id]=m});
- document.getElementById("planeCount").textContent=aircraft.length;
-}
-async function loadLiveAircraft(showFailure=true){
- if(liveFetchInProgress)return;liveFetchInProgress=true;
- try{
-  const response=await fetch("/api/live-aircraft?airport="+encodeURIComponent(currentAirport)+"&radius=50",{cache:"no-store"});
-  const data=await response.json();
-  if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
-  if(!Array.isArray(data.aircraft))throw new Error("Unexpected live data format");
-  aircraft=data.aircraft.filter(a=>Number.isFinite(a.lat)&&Number.isFinite(a.lon)).map(normalizeLiveAircraft);
-  renderAircraftMarkers();
-  hasConnected=true;
-  document.getElementById("feedStatus").textContent="LIVE ADS-B · "+data.source;
-  document.getElementById("feedDot").style.background="var(--green)";
-  document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · ODbL data. Callsigns, registration and type may be missing; routes are not provided by this view.';
-  if(selectedId){if(aircraft.some(a=>a.id===selectedId))selectAircraft(selectedId);else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
- }catch(error){
-  aircraft=[];renderAircraftMarkers();selectedId=null;
-  document.getElementById("panelTitle").textContent="Live feed unavailable";
-  document.getElementById("details").innerHTML='<div class="empty">Could not load live aircraft. Check the server endpoint, then try again.</div>';
-  document.getElementById("feedStatus").textContent="ADS-B FEED UNAVAILABLE";
-  document.getElementById("feedDot").style.background="var(--red)";
-  document.getElementById("mapNote").textContent="Live data unavailable right now. No simulated aircraft are shown. Check the server endpoint and try again.";
-  if(showFailure&&!hasConnected)toast("Could not load live aircraft. Is the app server running?");
- }finally{liveFetchInProgress=false}
-}
-function selectAircraft(id){selectedId=id;const a=aircraft.find(x=>x.id===id);if(!a)return;Object.entries(markers).forEach(([k,m])=>m.setIcon(iconFor(aircraft.find(x=>x.id===k),k===id)));document.getElementById("panelTitle").textContent=a.flight;const ownedGroup=collection[liveryKey(a)];const already=!!ownedGroup?.registrations.includes(a.reg);document.getElementById("details").innerHTML=`
-<div class="hero"><div class="heroimg"><div class="hero-plane">✈</div></div><div class="hero-body"><div class="titleline"><div><div class="callsign">${esc(a.flight)}</div><div class="sub">${esc(a.airline)}</div></div><span class="badge" style="color:${rarityColor(a.rarity)};border-color:${rarityColor(a.rarity)}">${esc(a.rarity)}</span></div><div class="sub" style="margin-top:8px">${esc(a.type)} · ${esc(a.regLabel||a.reg)}</div><div class="sub" style="margin-top:3px">Livery: ${esc(a.livery)}</div></div></div>
-<div class="route"><div><div class="eyebrow">ROUTE DATA</div><div class="airport">${a.from?esc(a.from):"—"}</div></div><div class="routepath">➤</div><div style="text-align:right"><div class="eyebrow">DESTINATION</div><div class="airport">${a.to?esc(a.to):"—"}</div></div></div>
-<div class="stats"><div class="stat"><label>Altitude</label><strong>${a.alt===null?"N/A":fmt(a.alt)+" ft"}</strong></div><div class="stat"><label>Ground speed</label><strong>${a.speed===null?"N/A":a.speed+" kt"}</strong></div><div class="stat"><label>Heading</label><strong>${a.heading}°</strong></div><div class="stat"><label>Vertical speed</label><strong>${a.vs===null?"N/A":(a.vs>0?"+":"")+a.vs+" ft/min"}</strong></div></div>
-<button class="collect" id="collectBtn" ${already?"disabled":""}>${already?"✓ AIRCRAFT ALREADY COLLECTED":ownedGroup?"✦ COLLECT DUPLICATE":"✦ COLLECT AIRCRAFT"}</button>
-<div class="footnote">${a.isLive?"LIVE ADS-B POSITION · Collection rarity/value are game mechanics, not real-world rankings. Route and airline identity are not confirmed by this position feed.":"DEMO RECORD · Not verified live data."}</div>`;
-const btn=document.getElementById("collectBtn");if(btn&&!already)btn.onclick=()=>collectAircraft(a);renderRecent()}
-function liveryKey(a){return [a.airline,a.code,a.livery].join("|")}
-function collectAircraft(a){const k=liveryKey(a);if(!collection[k])collection[k]={key:k,airline:a.airline,code:a.code,type:a.type,livery:a.livery,rarity:a.rarity,value:a.value,count:0,registrations:[],firstCollected:new Date().toISOString()};if(collection[k].registrations.includes(a.reg)){toast("That demo aircraft registration is already in your hangar.");return}collection[k].count++;collection[k].registrations.push(a.reg);collection[k].value=a.value;saveCollection();selectAircraft(a.id);toast("✈ Added "+a.airline+" "+a.code+" to your hangar!")}
-function renderRecent(){const host=document.getElementById("recentInventory");const rows=Object.values(collection).sort((a,b)=>Date.parse(b.firstCollected)-Date.parse(a.firstCollected)).slice(0,3);document.getElementById("recentLabel").textContent=rows.length+" groups";if(!rows.length){host.innerHTML='<div class="empty">Your first collectible is waiting up there 👆</div>';return}host.innerHTML=rows.map(x=>`<div class="invrow" data-key="${x.key}"><div class="mini-plane">✈</div><div class="invinfo"><strong>${x.airline} ${x.code}</strong><small>${x.livery}</small></div><div class="count">×${x.count}</div></div>`).join("");host.querySelectorAll(".invrow").forEach(el=>el.onclick=()=>showHangar())}
-function renderHangar(){const rows=Object.values(collection).filter(x=>(x.airline+" "+x.code+" "+x.type+" "+x.livery).toLowerCase().includes((document.getElementById("search")?.value||"").toLowerCase())).sort((a,b)=>sortDescending?b.value-a.value:a.value-b.value);const total=Object.values(collection).reduce((s,x)=>s+x.count,0),value=Object.values(collection).reduce((s,x)=>s+x.value*x.count,0);document.getElementById("totalCount").textContent=total;document.getElementById("uniqueCount").textContent=Object.keys(collection).length;document.getElementById("navCount").textContent=total;document.getElementById("totalValue").textContent="¥"+fmt(value);document.getElementById("cards").innerHTML=rows.map(x=>`<article class="card"><div class="card-art"><span class="badge card-rarity" style="color:${rarityColor(x.rarity)};border-color:${rarityColor(x.rarity)}">${x.rarity}</span><span class="card-count">×${x.count}</span><div class="hero-plane">✈</div></div><div class="cardbody"><h3>${x.airline} ${x.code}</h3><p>${x.type}</p><p style="margin-top:5px">${x.livery}</p><div class="cardfoot"><span>EST. VALUE</span><strong>¥${fmt(x.value*x.count)}</strong></div><p style="margin-top:9px">Registrations: ${x.registrations.join(", ")}</p></div></article>`).join("");document.getElementById("emptyHangar").classList.toggle("hidden",rows.length>0);document.getElementById("cards").classList.toggle("hidden",rows.length===0)}
-function showRadar(){document.getElementById("radarView").classList.add("active");document.getElementById("hangarView").classList.remove("active");document.getElementById("radarTab").classList.add("active");document.getElementById("hangarTab").classList.remove("active");setTimeout(()=>map.invalidateSize(),100)}
-function showHangar(){renderHangar();document.getElementById("hangarView").classList.add("active");document.getElementById("radarView").classList.remove("active");document.getElementById("hangarTab").classList.add("active");document.getElementById("radarTab").classList.remove("active")}
-document.getElementById("radarTab").onclick=showRadar;document.getElementById("hangarTab").onclick=showHangar;document.getElementById("seeHangar").onclick=showHangar;document.getElementById("backRadar").onclick=showRadar;document.getElementById("clearSelection").onclick=()=>{selectedId=null;Object.entries(markers).forEach(([k,m)=>m.setIcon(iconFor(aircraft.find(x=>x.id===k))));document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>'};document.getElementById("airportSelect").addEventListener("change",e=>{currentAirport=e.target.value;map.setView(airportCenters[currentAirport],5);selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Loading live aircraft for this area…</div>';loadLiveAircraft()});document.getElementById("search").addEventListener("input",renderHangar);document.getElementById("sortValue").onclick=()=>{sortDescending=!sortDescending;document.getElementById("sortValue").textContent="Sort: Value "+(sortDescending?"↓":"↑");renderHangar()};document.getElementById("resetHangar").onclick=()=>{if(confirm("Reset your local hangar? This cannot be undone.")){collection={};saveCollection();toast("Hangar reset.")}};
-renderHangar();renderRecent();renderAircraftMarkers();loadLiveAircraft();setInterval(()=>loadLiveAircraft(false),20000);
+window.addEventListener("load", async function () {
+  if (!window.L) {
+    try {
+      await new Promise((resolve,reject) => {
+        const script=document.createElement("script");
+        script.src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+        script.onload=resolve;
+        script.onerror=reject;
+        document.head.appendChild(script);
+      });
+      const css=document.createElement("link");
+      css.rel="stylesheet";
+      css.href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+    } catch (_) {}
+  }
+  if (!window.L) {
+    const status=document.getElementById("feedStatus");
+    const note=document.getElementById("mapNote");
+    if(status)status.textContent="MAP LIBRARY FAILED TO LOAD";
+    if(note)note.textContent="The map library could not load from either CDN. Reload the page and try again.";
+    const details=document.getElementById("details");
+    if(details)details.innerHTML='<div class="empty">Map startup failed because Leaflet did not load. The live aircraft request was not started.</div>';
+    return;
+  }
+  try {
+    
+    let aircraft=[];
+    const key="flightHunterHangarV1";
+    let collection=loadCollection(),selectedId=null,sortDescending=true;
+    function loadCollection(){try{return JSON.parse(localStorage.getItem(key)||"{}")}catch{return{}}}
+    function saveCollection(){localStorage.setItem(key,JSON.stringify(collection));renderHangar();renderRecent()}
+    function fmt(n){return new Intl.NumberFormat("en-US").format(n)}
+    function rarityColor(r){return ({COMMON:"#a8b4c3",UNCOMMON:"#78e2b1",RARE:"#69c9ff",EPIC:"#d1a0ff",LEGENDARY:"#ffd16a"})[r]||"#a8b4c3"}
+    function toast(s){const el=document.getElementById("toast");el.textContent=s;el.classList.add("show");clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove("show"),2400)}
+    function iconFor(a,selected=false){return L.divIcon({className:"",html:'<div class="plane-marker '+(selected?"selected":"")+'" style="transform:rotate('+a.heading+'deg)">✈</div>',iconSize:[32,32],iconAnchor:[16,16]})}
+    const map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([36.1,140.1],5);
+    const osmTiles=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+    let fallbackTilesAdded=false;
+    osmTiles.on("tileerror",()=>{if(fallbackTilesAdded)return;fallbackTilesAdded=true;map.removeLayer(osmTiles);L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);});
+    const markers={};
+    const airportCenters={RJTT:[35.5494,139.7798],RJAA:[35.772,140.3929],RJBB:[34.4347,135.244],WSSS:[1.3644,103.9915],EGLL:[51.47,-0.4543],KJFK:[40.6413,-73.7781]};
+    let currentAirport="RJTT",hasConnected=false,liveFetchInProgress=false;
+    const typeNames={A20N:"Airbus A320neo",A21N:"Airbus A321neo",A320:"Airbus A320",A321:"Airbus A321",A332:"Airbus A330-200",A333:"Airbus A330-300",A359:"Airbus A350-900",A35K:"Airbus A350-1000",A388:"Airbus A380-800",B738:"Boeing 737-800",B38M:"Boeing 737 MAX 8",B789:"Boeing 787-9",B788:"Boeing 787-8",B78X:"Boeing 787-10",B77W:"Boeing 777-300ER",B77L:"Boeing 777F",B744:"Boeing 747-400",B748:"Boeing 747-8"};
+    function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+    function normalizeLiveAircraft(raw){
+     const hex=String(raw.hex||"").trim().toUpperCase();
+     const flight=String(raw.flight||"").trim()||("HEX "+(hex||"UNKNOWN"));
+     const code=String(raw.t||"").trim().toUpperCase()||"UNKNOWN";
+     const reg=String(raw.r||"").trim();
+     const callsign=flight.toUpperCase();
+     const operators=[[/^JAL|^JL/, "Japan Airlines"],[/^ANA|^NH/, "All Nippon Airways"],[/^SIA|^SQ/, "Singapore Airlines"],[/^QFA|^QF/, "Qantas"],[/^UAL|^UA/, "United Airlines"],[/^AAL|^AA/, "American Airlines"],[/^DAL|^DL/, "Delta Air Lines"],[/^KAL|^KE/, "Korean Air"],[/^CPA|^CX/, "Cathay Pacific"],[/^EVA|^BR/, "EVA Air"],[/^THA|^TG/, "Thai Airways"]];
+     const operator=operators.find(([re])=>re.test(callsign));
+     const alt=typeof raw.alt_baro==="number"?raw.alt_baro:(typeof raw.alt_geom==="number"?raw.alt_geom:null);
+     const speed=Number.isFinite(raw.gs)?Math.round(raw.gs):null;
+     const heading=Number.isFinite(raw.track)?Math.round(raw.track):0;
+     const vs=Number.isFinite(raw.baro_rate)?Math.round(raw.baro_rate):(Number.isFinite(raw.geom_rate)?Math.round(raw.geom_rate):null);
+     return {id:"live-"+(hex||flight.replace(/[^a-z0-9]/gi,"-")),flight,airline:operator?operator[1]:"Operator not verified",type:typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code),code,reg:reg||("ICAO "+hex),regLabel:reg||"Registration unavailable",from:"",to:"",lat:raw.lat,lon:raw.lon,alt,speed,heading,vs,livery:"Unverified livery",rarity:"COMMON",value:1000,emoji:"✈",isLive:true,hex};
+    }
+    function renderAircraftMarkers(){
+     Object.keys(markers).forEach(k=>{map.removeLayer(markers[k]);delete markers[k]});
+     aircraft.forEach(a=>{const m=L.marker([a.lat,a.lon],{icon:iconFor(a,a.id===selectedId)}).addTo(map);m.bindTooltip(esc(a.flight)+" · "+esc(a.code),{direction:"top",offset:[0,-12]});m.on("click",()=>selectAircraft(a.id));markers[a.id]=m});
+     document.getElementById("planeCount").textContent=aircraft.length;
+    }
+    async function loadLiveAircraft(showFailure=true){
+     if(liveFetchInProgress)return;liveFetchInProgress=true;
+     try{
+      const response=await fetch("/api/live-aircraft?airport="+encodeURIComponent(currentAirport)+"&radius=50",{cache:"no-store"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
+      if(!Array.isArray(data.aircraft))throw new Error("Unexpected live data format");
+      aircraft=data.aircraft.filter(a=>Number.isFinite(a.lat)&&Number.isFinite(a.lon)).map(normalizeLiveAircraft);
+      renderAircraftMarkers();
+      hasConnected=true;
+      document.getElementById("feedStatus").textContent="LIVE ADS-B · "+data.source;
+      document.getElementById("feedDot").style.background="var(--green)";
+      document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · ODbL data. Callsigns, registration and type may be missing; routes are not provided by this view.';
+      if(selectedId){if(aircraft.some(a=>a.id===selectedId))selectAircraft(selectedId);else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
+     }catch(error){
+      aircraft=[];renderAircraftMarkers();selectedId=null;
+      document.getElementById("panelTitle").textContent="Live feed unavailable";
+      document.getElementById("details").innerHTML='<div class="empty">Could not load live aircraft. Check the server endpoint, then try again.</div>';
+      document.getElementById("feedStatus").textContent="ADS-B FEED UNAVAILABLE";
+      document.getElementById("feedDot").style.background="var(--red)";
+      document.getElementById("mapNote").textContent="Live data unavailable right now. No simulated aircraft are shown. Check the server endpoint and try again.";
+      if(showFailure&&!hasConnected)toast("Could not load live aircraft. Is the app server running?");
+     }finally{liveFetchInProgress=false}
+    }
+    function selectAircraft(id){selectedId=id;const a=aircraft.find(x=>x.id===id);if(!a)return;Object.entries(markers).forEach(([k,m])=>m.setIcon(iconFor(aircraft.find(x=>x.id===k),k===id)));document.getElementById("panelTitle").textContent=a.flight;const ownedGroup=collection[liveryKey(a)];const already=!!ownedGroup?.registrations.includes(a.reg);document.getElementById("details").innerHTML=`
+    <div class="hero"><div class="heroimg"><div class="hero-plane">✈</div></div><div class="hero-body"><div class="titleline"><div><div class="callsign">${esc(a.flight)}</div><div class="sub">${esc(a.airline)}</div></div><span class="badge" style="color:${rarityColor(a.rarity)};border-color:${rarityColor(a.rarity)}">${esc(a.rarity)}</span></div><div class="sub" style="margin-top:8px">${esc(a.type)} · ${esc(a.regLabel||a.reg)}</div><div class="sub" style="margin-top:3px">Livery: ${esc(a.livery)}</div></div></div>
+    <div class="route"><div><div class="eyebrow">ROUTE DATA</div><div class="airport">${a.from?esc(a.from):"—"}</div></div><div class="routepath">➤</div><div style="text-align:right"><div class="eyebrow">DESTINATION</div><div class="airport">${a.to?esc(a.to):"—"}</div></div></div>
+    <div class="stats"><div class="stat"><label>Altitude</label><strong>${a.alt===null?"N/A":fmt(a.alt)+" ft"}</strong></div><div class="stat"><label>Ground speed</label><strong>${a.speed===null?"N/A":a.speed+" kt"}</strong></div><div class="stat"><label>Heading</label><strong>${a.heading}°</strong></div><div class="stat"><label>Vertical speed</label><strong>${a.vs===null?"N/A":(a.vs>0?"+":"")+a.vs+" ft/min"}</strong></div></div>
+    <button class="collect" id="collectBtn" ${already?"disabled":""}>${already?"✓ AIRCRAFT ALREADY COLLECTED":ownedGroup?"✦ COLLECT DUPLICATE":"✦ COLLECT AIRCRAFT"}</button>
+    <div class="footnote">${a.isLive?"LIVE ADS-B POSITION · Collection rarity/value are game mechanics, not real-world rankings. Route and airline identity are not confirmed by this position feed.":"DEMO RECORD · Not verified live data."}</div>`;
+    const btn=document.getElementById("collectBtn");if(btn&&!already)btn.onclick=()=>collectAircraft(a);renderRecent()}
+    function liveryKey(a){return [a.airline,a.code,a.livery].join("|")}
+    function collectAircraft(a){const k=liveryKey(a);if(!collection[k])collection[k]={key:k,airline:a.airline,code:a.code,type:a.type,livery:a.livery,rarity:a.rarity,value:a.value,count:0,registrations:[],firstCollected:new Date().toISOString()};if(collection[k].registrations.includes(a.reg)){toast("That demo aircraft registration is already in your hangar.");return}collection[k].count++;collection[k].registrations.push(a.reg);collection[k].value=a.value;saveCollection();selectAircraft(a.id);toast("✈ Added "+a.airline+" "+a.code+" to your hangar!")}
+    function renderRecent(){const host=document.getElementById("recentInventory");const rows=Object.values(collection).sort((a,b)=>Date.parse(b.firstCollected)-Date.parse(a.firstCollected)).slice(0,3);document.getElementById("recentLabel").textContent=rows.length+" groups";if(!rows.length){host.innerHTML='<div class="empty">Your first collectible is waiting up there 👆</div>';return}host.innerHTML=rows.map(x=>`<div class="invrow" data-key="${x.key}"><div class="mini-plane">✈</div><div class="invinfo"><strong>${x.airline} ${x.code}</strong><small>${x.livery}</small></div><div class="count">×${x.count}</div></div>`).join("");host.querySelectorAll(".invrow").forEach(el=>el.onclick=()=>showHangar())}
+    function renderHangar(){const rows=Object.values(collection).filter(x=>(x.airline+" "+x.code+" "+x.type+" "+x.livery).toLowerCase().includes((document.getElementById("search")?.value||"").toLowerCase())).sort((a,b)=>sortDescending?b.value-a.value:a.value-b.value);const total=Object.values(collection).reduce((s,x)=>s+x.count,0),value=Object.values(collection).reduce((s,x)=>s+x.value*x.count,0);document.getElementById("totalCount").textContent=total;document.getElementById("uniqueCount").textContent=Object.keys(collection).length;document.getElementById("navCount").textContent=total;document.getElementById("totalValue").textContent="¥"+fmt(value);document.getElementById("cards").innerHTML=rows.map(x=>`<article class="card"><div class="card-art"><span class="badge card-rarity" style="color:${rarityColor(x.rarity)};border-color:${rarityColor(x.rarity)}">${x.rarity}</span><span class="card-count">×${x.count}</span><div class="hero-plane">✈</div></div><div class="cardbody"><h3>${x.airline} ${x.code}</h3><p>${x.type}</p><p style="margin-top:5px">${x.livery}</p><div class="cardfoot"><span>EST. VALUE</span><strong>¥${fmt(x.value*x.count)}</strong></div><p style="margin-top:9px">Registrations: ${x.registrations.join(", ")}</p></div></article>`).join("");document.getElementById("emptyHangar").classList.toggle("hidden",rows.length>0);document.getElementById("cards").classList.toggle("hidden",rows.length===0)}
+    function showRadar(){document.getElementById("radarView").classList.add("active");document.getElementById("hangarView").classList.remove("active");document.getElementById("radarTab").classList.add("active");document.getElementById("hangarTab").classList.remove("active");setTimeout(()=>map.invalidateSize(),100)}
+    function showHangar(){renderHangar();document.getElementById("hangarView").classList.add("active");document.getElementById("radarView").classList.remove("active");document.getElementById("hangarTab").classList.add("active");document.getElementById("radarTab").classList.remove("active")}
+    document.getElementById("radarTab").onclick=showRadar;document.getElementById("hangarTab").onclick=showHangar;document.getElementById("seeHangar").onclick=showHangar;document.getElementById("backRadar").onclick=showRadar;document.getElementById("clearSelection").onclick=()=>{selectedId=null;Object.entries(markers).forEach(([k,m)=>m.setIcon(iconFor(aircraft.find(x=>x.id===k))));document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>'};document.getElementById("airportSelect").addEventListener("change",e=>{currentAirport=e.target.value;map.setView(airportCenters[currentAirport],5);selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Loading live aircraft for this area…</div>';loadLiveAircraft()});document.getElementById("search").addEventListener("input",renderHangar);document.getElementById("sortValue").onclick=()=>{sortDescending=!sortDescending;document.getElementById("sortValue").textContent="Sort: Value "+(sortDescending?"↓":"↑");renderHangar()};document.getElementById("resetHangar").onclick=()=>{if(confirm("Reset your local hangar? This cannot be undone.")){collection={};saveCollection();toast("Hangar reset.")}};
+    renderHangar();renderRecent();renderAircraftMarkers();loadLiveAircraft();setInterval(()=>loadLiveAircraft(false),20000);
+    
+  } catch (error) {
+    console.error("Flight Hunter startup error:",error);
+    const status=document.getElementById("feedStatus");
+    const note=document.getElementById("mapNote");
+    if(status)status.textContent="APP STARTUP ERROR";
+    if(note)note.textContent="Flight Hunter failed to start. Open the browser console for the error.";
+  }
+});
 </script>
 </body></html>

@@ -106,7 +106,7 @@ window.addEventListener("load", async function () {
      Object.keys(markers).forEach(k=>{if(!liveIds.has(k)){map.removeLayer(markers[k]);delete markers[k]}});
      aircraft.forEach(a=>{
       let m=markers[a.id];
-      if(m){const start=m.getLatLng(),target=L.latLng(a.lat,a.lon);if(m._moveFrame)cancelAnimationFrame(m._moveFrame);const distance=start.distanceTo(target);if(distance>5){const t0=performance.now(),duration=4200;const step=now=>{const p=Math.min(1,(now-t0)/duration);m.setLatLng([start.lat+(target.lat-start.lat)*p,start.lng+(target.lng-start.lng)*p]);if(p<1)m._moveFrame=requestAnimationFrame(step);else m._moveFrame=null};m._moveFrame=requestAnimationFrame(step)}else m.setLatLng(target);m.setIcon(iconFor(a,a.id===selectedId));}
+      if(m){const start=m.getLatLng(),target=L.latLng(a.lat,a.lon);if(m._moveFrame)cancelAnimationFrame(m._moveFrame);const distance=start.distanceTo(target);if(distance>0.5){const t0=performance.now(),duration=7800;const step=now=>{const p=Math.min(1,(now-t0)/duration);m.setLatLng([start.lat+(target.lat-start.lat)*p,start.lng+(target.lng-start.lng)*p]);if(p<1)m._moveFrame=requestAnimationFrame(step);else m._moveFrame=null};m._moveFrame=requestAnimationFrame(step)}else m.setLatLng(target);m.setIcon(iconFor(a,a.id===selectedId));}
       else{m=L.marker([a.lat,a.lon],{icon:iconFor(a,a.id===selectedId)}).addTo(map);m.bindTooltip(esc(a.flight)+" · "+esc(a.code),{direction:"top",offset:[0,-12]});m.on("click",()=>selectAircraft(a.id));markers[a.id]=m;}
      });
      document.getElementById("planeCount").textContent=aircraft.length;

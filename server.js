@@ -7,12 +7,12 @@ const port = Number(process.env.PORT || 3000);
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml" };
 
 const airports = {
-  RJTT: { name: "Tokyo Haneda", lat: 35.5494, lon: 139.7798 },
-  RJAA: { name: "Tokyo Narita", lat: 35.7720, lon: 140.3929 },
-  RJBB: { name: "Osaka Kansai", lat: 34.4347, lon: 135.2440 },
-  WSSS: { name: "Singapore Changi", lat: 1.3644, lon: 103.9915 },
-  EGLL: { name: "London Heathrow", lat: 51.4700, lon: -0.4543 },
-  KJFK: { name: "New York JFK", lat: 40.6413, lon: -73.7781 },
+  RJTT: { name: "Tokyo International Airport (Haneda Airport)", lat: 35.5494, lon: 139.7798 },
+  RJAA: { name: "Narita International Airport", lat: 35.7720, lon: 140.3929 },
+  RJBB: { name: "Kansai International Airport", lat: 34.4347, lon: 135.2440 },
+  WSSS: { name: "Singapore Changi Airport", lat: 1.3644, lon: 103.9915 },
+  EGLL: { name: "London Heathrow Airport", lat: 51.4700, lon: -0.4543 },
+  KJFK: { name: "John F. Kennedy International Airport", lat: 40.6413, lon: -73.7781 },
 };
 let liveCache = new Map();
 const infoCache = new Map();

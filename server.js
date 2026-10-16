@@ -120,7 +120,8 @@ async function liveAircraft(url, res) {
 
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (url.pathname === "/api/live-aircraft") return void liveAircraft(url, res);\n  if (url.pathname === "/api/aircraft-info") return void aircraftInfo(url, res);
+  if (url.pathname === "/api/live-aircraft") return void liveAircraft(url, res);
+  if (url.pathname === "/api/aircraft-info") return void aircraftInfo(url, res);
   const pathname = decodeURIComponent(url.pathname);
   let file = path.join(root, pathname === "/" ? "index.html" : pathname.replace(/^\/+/, ""));
   if (!file.startsWith(root)) {

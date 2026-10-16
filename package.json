@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js"
   },
+  "dependencies": {
+    "leaflet": "1.9.4"
+  },
   "engines": {
     "node": ">=18"
   }

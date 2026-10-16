@@ -7,13 +7,101 @@ const port = Number(process.env.PORT || 3000);
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml" };
 
 const airports = {
-  RJTT: { name: "Tokyo International Airport (Haneda Airport)", lat: 35.5494, lon: 139.7798 },
-  RJAA: { name: "Narita International Airport", lat: 35.7720, lon: 140.3929 },
-  RJBB: { name: "Kansai International Airport", lat: 34.4347, lon: 135.2440 },
-  WSSS: { name: "Singapore Changi Airport", lat: 1.3644, lon: 103.9915 },
-  EGLL: { name: "London Heathrow Airport", lat: 51.4700, lon: -0.4543 },
-  KJFK: { name: "John F. Kennedy International Airport", lat: 40.6413, lon: -73.7781 },
+  RJTT: { code: "RJTT", name: "Tokyo International Airport (Haneda Airport)", lat: 35.5494, lon: 139.7798, iata: "HND", icao: "RJTT", country: "Japan" },
+  RJAA: { code: "RJAA", name: "Narita International Airport", lat: 35.7720, lon: 140.3929, iata: "NRT", icao: "RJAA", country: "Japan" },
+  RJBB: { code: "RJBB", name: "Kansai International Airport", lat: 34.4347, lon: 135.2440, iata: "KIX", icao: "RJBB", country: "Japan" },
+  WSSS: { code: "WSSS", name: "Singapore Changi Airport", lat: 1.3644, lon: 103.9915, iata: "SIN", icao: "WSSS", country: "Singapore" },
+  EGLL: { code: "EGLL", name: "London Heathrow Airport", lat: 51.4700, lon: -0.4543, iata: "LHR", icao: "EGLL", country: "United Kingdom" },
+  KJFK: { code: "KJFK", name: "John F. Kennedy International Airport", lat: 40.6413, lon: -73.7781, iata: "JFK", icao: "KJFK", country: "United States" },
 };
+let airportDatabase = null;
+let airportDatabaseLoadedAt = 0;
+let airportDatabasePromise = null;
+async function getAirportDatabase() {
+  if (airportDatabase && Date.now() - airportDatabaseLoadedAt < 24 * 60 * 60 * 1000) return airportDatabase;
+  if (airportDatabasePromise) return airportDatabasePromise;
+  airportDatabasePromise = (async () => {
+    try {
+      const response = await fetch("https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv", {
+        headers: { "accept": "text/csv", "user-agent": "FlightHunter/0.4 (airport search)" },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!response.ok) throw new Error("Airport database returned HTTP " + response.status);
+      const csv = await response.text();
+      const lines = csv.split(/\r?\n/);
+      const headers = parseCsvLine(lines.shift() || "");
+      const idx = Object.fromEntries(headers.map((h, i) => [h, i]));
+      const rows = [];
+      for (const line of lines) {
+        if (!line) continue;
+        const c = parseCsvLine(line);
+        const lat = Number(c[idx.latitude_deg]), lon = Number(c[idx.longitude_deg]);
+        const name = c[idx.name] || "";
+        if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        const icao = c[idx.icao_code] || c[idx.gps_code] || "";
+        const iata = c[idx.iata_code] || "";
+        const ident = c[idx.ident] || "";
+        const code = icao || iata || ident;
+        if (!code) continue;
+        rows.push({
+          code, ident, icao, iata, name, lat, lon,
+          city: c[idx.municipality] || "",
+          country: c[idx.iso_country] || "",
+          type: c[idx.type] || "airport"
+        });
+      }
+      airportDatabase = rows;
+      airportDatabaseLoadedAt = Date.now();
+      return rows;
+    } catch (error) {
+      console.warn("Global airport database unavailable:", error.message);
+      return Object.values(airports);
+    } finally {
+      airportDatabasePromise = null;
+    }
+  })();
+  return airportDatabasePromise;
+}
+function parseCsvLine(line) {
+  const out = [];
+  let value = "", quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') { value += '"'; i++; }
+      else quoted = !quoted;
+    } else if (ch === "," && !quoted) {
+      out.push(value); value = "";
+    } else value += ch;
+  }
+  out.push(value);
+  return out;
+}
+async function searchAirports(url, res) {
+  const q = String(url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 100);
+  if (q.length < 2) {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    return res.end(JSON.stringify({ airports: [] }));
+  }
+  const rows = await getAirportDatabase();
+  const matched = rows.map(a => ({
+    ...a,
+    label: [a.name, a.city, a.country].filter(Boolean).join(" · ")
+  })).filter(a => (
+    a.name.toLowerCase().includes(q) ||
+    (a.city || "").toLowerCase().includes(q) ||
+    (a.country || "").toLowerCase().includes(q) ||
+    (a.iata || "").toLowerCase() === q ||
+    (a.icao || "").toLowerCase() === q ||
+    (a.ident || "").toLowerCase() === q ||
+    (a.code || "").toLowerCase() === q
+  )).sort((a, b) => {
+    const score = a => (a.name.toLowerCase().startsWith(q) ? 0 : (a.iata || "").toLowerCase() === q || (a.icao || "").toLowerCase() === q || (a.ident || "").toLowerCase() === q ? 1 : (a.city || "").toLowerCase().startsWith(q) ? 2 : 3);
+    return score(a) - score(b) || a.name.localeCompare(b.name);
+  }).slice(0, 30);
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  res.end(JSON.stringify({ airports: matched, count: rows.length, source: "OurAirports" }));
+}
 let liveCache = new Map();
 const infoCache = new Map();
 
@@ -27,7 +115,9 @@ async function aircraftInfo(url, res) {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
     return res.end(JSON.stringify(cached.data));
   }
-  const result = { callsign, route: null, photo: null, photoLink: null, photographer: null, photoSource: null };
+  const airline = String(url.searchParams.get("airline") || "").trim().slice(0, 80);
+  const aircraftType = String(url.searchParams.get("type") || "").trim().slice(0, 80);
+  const result = { callsign, route: null, photo: null, photoLink: null, photographer: null, photoSource: null, photoKind: null };
   const jobs = [];
   if (callsign && !/^HEX\s/.test(callsign)) {
     jobs.push((async () => {
@@ -70,20 +160,52 @@ async function aircraftInfo(url, res) {
           result.photoLink = p.link || null;
           result.photographer = p.photographer || null;
           result.photoSource = "Planespotters.net";
+          result.photoKind = "exact";
         }
       } catch (_) {}
     })());
   }
   await Promise.all(jobs);
+  if (!result.photo) {
+    try {
+      const searchTerms = [airline !== "Operator not verified" ? airline : "", aircraftType, "aircraft"].filter(Boolean).join(" ");
+      const endpoint = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" + encodeURIComponent("filetype:bitmap " + searchTerms) + "&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url%7Cextmetadata&iiurlwidth=900&format=json";
+      const r = await fetch(endpoint, {
+        headers: { "accept": "application/json", "user-agent": "FlightHunter/0.4 (representative aircraft photos)" },
+        signal: AbortSignal.timeout(7000)
+      });
+      if (r.ok) {
+        const j = await r.json();
+        const pages = Object.values(j?.query?.pages || {});
+        const usable = pages.find(p => p.imageinfo?.[0]?.thumburl && /\.(jpe?g|png|webp)/i.test(p.title || ""));
+        if (usable) {
+          const info = usable.imageinfo[0];
+          result.photo = info.thumburl;
+          result.photoLink = info.descriptionurl || ("https://commons.wikimedia.org/wiki/" + encodeURIComponent(usable.title.replace(/ /g, "_")));
+          const artist = info.extmetadata?.Artist?.value || "";
+          result.photographer = artist.replace(/<[^>]*>/g, "").slice(0, 120) || null;
+          result.photoSource = "Wikimedia Commons";
+          result.photoKind = "representative";
+        }
+      }
+    } catch (_) {}
+  }
   infoCache.set(key, { time: Date.now(), data: result });
   if (infoCache.size > 1000) infoCache.delete(infoCache.keys().next().value);
   res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(result));
 }
 
+async function findAirport(code) {
+  const key = String(code || "").toUpperCase();
+  if (airports[key]) return airports[key];
+  const rows = await getAirportDatabase();
+  return rows.find(a => [a.code, a.ident, a.icao, a.iata, a.gps_code].some(v => v && String(v).toUpperCase() === key)) || null;
+}
+
 async function liveAircraft(url, res) {
   const airportCode = (url.searchParams.get("airport") || "RJTT").toUpperCase();
-  const airport = airports[airportCode];
+  const airport = await findAirport(airportCode);
   if (!airport) {
     res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
     return res.end(JSON.stringify({ error: "Unsupported airport code." }));
@@ -126,6 +248,7 @@ async function liveAircraft(url, res) {
 
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (url.pathname === "/api/airports") return void searchAirports(url, res);
   if (url.pathname === "/api/live-aircraft") return void liveAircraft(url, res);
   if (url.pathname === "/api/aircraft-info") return void aircraftInfo(url, res);
   const pathname = decodeURIComponent(url.pathname);

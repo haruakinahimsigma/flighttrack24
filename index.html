@@ -32,7 +32,7 @@
  </div>
 </main>
 <main id="hangarView" class="view">
- <div class="hangar-head"><div><div class="eyebrow">YOUR COLLECTION</div><h1>My Hangar</h1><div class="sub"><span id="uniqueCount">0</span> liveries · <span id="totalCount">0</span> aircraft collected</div></div><div class="valuebox"><div class="eyebrow">TOTAL HANGAR WORTH</div><strong id="totalValue">¥0</strong><div class="sub">In-game estimate</div></div></div>
+ <div class="hangar-head"><div><div class="eyebrow">YOUR COLLECTION</div><h1>My Hangar</h1><div class="sub"><span id="uniqueCount">0</span> liveries · <span id="totalCount">0</span> aircraft collected</div></div><div class="valuebox"><div class="eyebrow">TOTAL HANGAR WORTH</div><strong id="totalValue">$0</strong><div class="sub">USD · estimated new-aircraft list price × rarity premium</div></div></div>
  <div class="filterbar"><input id="search" placeholder="Search airline, aircraft, livery…" aria-label="Search collection"><button id="sortValue">Sort: Value ↓</button><button id="resetHangar" class="smallbtn">Reset demo collection</button></div>
  <div id="cards" class="cards"></div><div id="emptyHangar" class="emptyhangar"><div class="emoji">🛫</div><h2>Your hangar is empty</h2><p>Return to Radar, select a flight and collect your first aircraft.</p><button id="backRadar">Explore radar</button></div>
 </main>
@@ -71,7 +71,7 @@ window.addEventListener("load", async function () {
     let aircraft=[];
     const key="flightHunterHangarV1";
     let collection=loadCollection(),selectedId=null,sortDescending=true;
-    function loadCollection(){try{return JSON.parse(localStorage.getItem(key)||"{}")}catch{return{}}}
+    function loadCollection(){try{const saved=JSON.parse(localStorage.getItem(key)||"{}");Object.values(saved).forEach(x=>{x.value=priceForAircraft(x.code,x.rarity,x.type)});localStorage.setItem(key,JSON.stringify(saved));return saved}catch{return{}}}
     function saveCollection(){localStorage.setItem(key,JSON.stringify(collection));renderHangar();renderRecent()}
     function fmt(n){return new Intl.NumberFormat("en-US").format(n)}
     function rarityColor(r){return ({COMMON:"#a8b4c3",UNCOMMON:"#78e2b1",RARE:"#69c9ff",EPIC:"#d1a0ff",LEGENDARY:"#ffd16a"})[r]||"#a8b4c3"}
@@ -89,16 +89,45 @@ window.addEventListener("load", async function () {
     const aircraftInfoCache={};
     const typeNames={A20N:"Airbus A320neo",A21N:"Airbus A321neo",A320:"Airbus A320",A321:"Airbus A321",A332:"Airbus A330-200",A333:"Airbus A330-300",A359:"Airbus A350-900",A35K:"Airbus A350-1000",A388:"Airbus A380-800",B738:"Boeing 737-800",B38M:"Boeing 737 MAX 8",B789:"Boeing 787-9",B788:"Boeing 787-8",B78X:"Boeing 787-10",B77W:"Boeing 777-300ER",B77L:"Boeing 777F",B744:"Boeing 747-400",B748:"Boeing 747-8"};
     function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-    function rarityForAircraft(flight,hex,reg,code){
-     const key=(hex||reg||flight)+"|"+code;
-     let hash=2166136261;
-     for(let i=0;i<key.length;i++){hash^=key.charCodeAt(i);hash=Math.imul(hash,16777619);}
-     const roll=(hash>>>0)%100;
-     if(roll<35)return {rarity:"COMMON",value:15000};
-     if(roll<65)return {rarity:"UNCOMMON",value:40000};
-     if(roll<85)return {rarity:"RARE",value:120000};
-     if(roll<95)return {rarity:"EPIC",value:400000};
-     return {rarity:"LEGENDARY",value:1500000};
+    // Approximate published new-aircraft list prices in USD; actual transaction prices vary by year, configuration, discounts and aircraft condition.
+    const aircraftBasePrices={
+      A20N:110000000,A21N:129500000,A320:101000000,A321:118000000,
+      A332:238000000,A333:264000000,A359:317000000,A35K:366000000,A388:445000000,
+      B738:106000000,B38M:121000000,B788:248000000,B789:293000000,B78X:338000000,
+      B77W:376000000,B77L:352000000,B744:240000000,B748:418000000
+    };
+    const rarityMultipliers={COMMON:1,UNCOMMON:1.08,RARE:1.2,EPIC:1.5,LEGENDARY:2};
+    function aircraftBasePrice(code,type){
+      if(aircraftBasePrices[code])return aircraftBasePrices[code];
+      const name=String(type||"").toLowerCase();
+      if(name.includes("a380"))return 445000000;
+      if(name.includes("a350-1000"))return 366000000;
+      if(name.includes("a350"))return 317000000;
+      if(name.includes("787-10"))return 338000000;
+      if(name.includes("787-9"))return 293000000;
+      if(name.includes("787-8"))return 248000000;
+      if(name.includes("777"))return 330000000;
+      if(name.includes("747-8"))return 418000000;
+      if(name.includes("747"))return 240000000;
+      if(name.includes("a330"))return 250000000;
+      if(name.includes("a321neo"))return 129500000;
+      if(name.includes("a320neo"))return 110000000;
+      if(name.includes("a321"))return 118000000;
+      if(name.includes("a320"))return 101000000;
+      if(name.includes("737 max"))return 121000000;
+      if(name.includes("737"))return 106000000;
+      return 25000000;
+    }
+    function priceForAircraft(code,rarity,type){
+      return Math.round(aircraftBasePrice(code,type)*(rarityMultipliers[rarity]||1));
+    }
+    function rarityForAircraft(flight,hex,reg,code,type){
+      const key=(hex||reg||flight)+"|"+code;
+      let hash=2166136261;
+      for(let i=0;i<key.length;i++){hash^=key.charCodeAt(i);hash=Math.imul(hash,16777619);}
+      const roll=(hash>>>0)%100;
+      const rarity=roll<35?"COMMON":roll<65?"UNCOMMON":roll<85?"RARE":roll<95?"EPIC":"LEGENDARY";
+      return {rarity,value:priceForAircraft(code,rarity,type)};
     }
     function normalizeLiveAircraft(raw){
      const hex=String(raw.hex||"").trim().toUpperCase();
@@ -113,8 +142,8 @@ window.addEventListener("load", async function () {
      const speed=Number.isFinite(raw.gs)?Math.round(raw.gs):null;
      const heading=Number.isFinite(raw.track)?Math.round(raw.track):0;
      const vs=Number.isFinite(raw.baro_rate)?Math.round(raw.baro_rate):(Number.isFinite(raw.geom_rate)?Math.round(raw.geom_rate):null);
-     const reward=rarityForAircraft(flight,hex,reg,code);
-     return {id:"live-"+(hex||flight.replace(/[^a-z0-9]/gi,"-")),flight,airline:operator?operator[1]:"Operator not verified",type:typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code),code,reg:reg||("ICAO "+hex),regLabel:reg||"Registration unavailable",from:"",to:"",lat:raw.lat,lon:raw.lon,alt,speed,heading,vs,isGround:raw.alt_baro==="ground",livery:"Unverified livery",rarity:reward.rarity,value:reward.value,emoji:"✈",isLive:true,hex};
+     const type=typeNames[code]|| (code==="UNKNOWN"?"Aircraft type unavailable":"Aircraft type "+code);\n      const reward=rarityForAircraft(flight,hex,reg,code,type);
+     return {id:"live-"+(hex||flight.replace(/[^a-z0-9]/gi,"-")),flight,airline:operator?operator[1]:"Operator not verified",type,code,reg:reg||("ICAO "+hex),regLabel:reg||"Registration unavailable",from:"",to:"",lat:raw.lat,lon:raw.lon,alt,speed,heading,vs,isGround:raw.alt_baro==="ground",livery:"Unverified livery",rarity:reward.rarity,value:reward.value,emoji:"✈",isLive:true,hex};
     }
     function renderAircraftMarkers(){
      const liveIds=new Set(aircraft.map(a=>a.id));
@@ -166,7 +195,7 @@ window.addEventListener("load", async function () {
     function liveryKey(a){return [a.airline,a.code,a.livery,a.rarity].join("|")}
     function collectAircraft(a){const k=liveryKey(a);if(!collection[k])collection[k]={key:k,airline:a.airline,code:a.code,type:a.type,livery:a.livery,rarity:a.rarity,value:a.value,count:0,registrations:[],firstCollected:new Date().toISOString()};const photoInfo=aircraftInfoCache[a.id];if(photoInfo?.photo){collection[k].photo=photoInfo.photo;collection[k].photoLink=photoInfo.photoLink||"";collection[k].photographer=photoInfo.photographer||"";collection[k].photoSource=photoInfo.photoSource||"";collection[k].photoKind=photoInfo.photoKind||"";}if(collection[k].registrations.includes(a.reg)){toast("That demo aircraft registration is already in your hangar.");return}collection[k].count++;collection[k].registrations.push(a.reg);collection[k].value=a.value;saveCollection();selectAircraft(a.id);toast("✈ Added "+a.airline+" "+a.code+" to your hangar!")}
     function renderRecent(){const host=document.getElementById("recentInventory");const rows=Object.values(collection).sort((a,b)=>Date.parse(b.firstCollected)-Date.parse(a.firstCollected)).slice(0,3);document.getElementById("recentLabel").textContent=rows.length+" groups";if(!rows.length){host.innerHTML='<div class="empty">Your first collectible is waiting up there 👆</div>';return}host.innerHTML=rows.map(x=>`<div class="invrow" data-key="${x.key}">${planeSvg("mini-plane")}<div class="invinfo"><strong>${x.airline} ${x.code}</strong><small>${x.livery}</small></div><div class="count">×${x.count}</div></div>`).join("");host.querySelectorAll(".invrow").forEach(el=>el.onclick=()=>showHangar())}
-    function renderHangar(){const rows=Object.values(collection).filter(x=>(x.airline+" "+x.code+" "+x.type+" "+x.livery).toLowerCase().includes((document.getElementById("search")?.value||"").toLowerCase())).sort((a,b)=>sortDescending?b.value-a.value:a.value-b.value);const total=Object.values(collection).reduce((s,x)=>s+x.count,0),value=Object.values(collection).reduce((s,x)=>s+x.value*x.count,0);document.getElementById("totalCount").textContent=total;document.getElementById("uniqueCount").textContent=Object.keys(collection).length;document.getElementById("navCount").textContent=total;document.getElementById("totalValue").textContent="¥"+fmt(value);document.getElementById("cards").innerHTML=rows.map(x=>`<article class="card"><div class="card-art"><span class="badge card-rarity" style="color:${rarityColor(x.rarity)};border-color:${rarityColor(x.rarity)}">${x.rarity}</span><span class="card-count">×${x.count}</span>${x.photo?'<img src="'+esc(x.photo)+'" alt="Aircraft photo for '+esc(x.registrations?.[0]||x.code)+'" loading="lazy" onerror="this.style.display=\'none\'">':planeSvg()}</div><div class="cardbody"><h3>${esc(x.airline)} ${esc(x.code)}</h3><p>${x.type}</p><p style="margin-top:5px">${x.livery}</p><div class="cardfoot"><span>EST. VALUE</span><strong>¥${fmt(x.value*x.count)}</strong></div><p style="margin-top:9px">Registrations: ${x.registrations.join(", ")}</p></div></article>`).join("");document.getElementById("emptyHangar").classList.toggle("hidden",rows.length>0);document.getElementById("cards").classList.toggle("hidden",rows.length===0)}
+    function renderHangar(){const rows=Object.values(collection).filter(x=>(x.airline+" "+x.code+" "+x.type+" "+x.livery).toLowerCase().includes((document.getElementById("search")?.value||"").toLowerCase())).sort((a,b)=>sortDescending?b.value-a.value:a.value-b.value);const total=Object.values(collection).reduce((s,x)=>s+x.count,0),value=Object.values(collection).reduce((s,x)=>s+x.value*x.count,0);document.getElementById("totalCount").textContent=total;document.getElementById("uniqueCount").textContent=Object.keys(collection).length;document.getElementById("navCount").textContent=total;document.getElementById("totalValue").textContent="$"+fmt(value);document.getElementById("cards").innerHTML=rows.map(x=>`<article class="card"><div class="card-art"><span class="badge card-rarity" style="color:${rarityColor(x.rarity)};border-color:${rarityColor(x.rarity)}">${x.rarity}</span><span class="card-count">×${x.count}</span>${x.photo?'<img src="'+esc(x.photo)+'" alt="Aircraft photo for '+esc(x.registrations?.[0]||x.code)+'" loading="lazy" onerror="this.style.display=\'none\'">':planeSvg()}</div><div class="cardbody"><h3>${esc(x.airline)} ${esc(x.code)}</h3><p>${x.type}</p><p style="margin-top:5px">${x.livery}</p><div class="cardfoot"><span>EST. VALUE</span><strong>${fmt(x.value*x.count)}</strong></div><p style="margin-top:9px">Registrations: ${x.registrations.join(", ")}</p></div></article>`).join("");document.getElementById("emptyHangar").classList.toggle("hidden",rows.length>0);document.getElementById("cards").classList.toggle("hidden",rows.length===0)}
     function showRadar(){document.getElementById("radarView").classList.add("active");document.getElementById("hangarView").classList.remove("active");document.getElementById("radarTab").classList.add("active");document.getElementById("hangarTab").classList.remove("active");setTimeout(()=>map.invalidateSize(),100)}
     function showHangar(){renderHangar();document.getElementById("hangarView").classList.add("active");document.getElementById("radarView").classList.remove("active");document.getElementById("hangarTab").classList.add("active");document.getElementById("radarTab").classList.remove("active")}
     document.getElementById("radarTab").onclick=showRadar;document.getElementById("hangarTab").onclick=showHangar;document.getElementById("seeHangar").onclick=showHangar;document.getElementById("backRadar").onclick=showRadar;document.getElementById("clearSelection").onclick=()=>{selectedId=null;Object.entries(markers).forEach(([k,m])=>m.setIcon(iconFor(aircraft.find(x=>x.id===k))));document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>'};const airportSearchInput=document.getElementById("airportSearch"),airportResults=document.getElementById("airportResults");

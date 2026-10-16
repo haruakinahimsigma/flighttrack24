@@ -129,16 +129,16 @@ window.addEventListener("load", async function () {
     async function loadLiveAircraft(showFailure=true){
      if(liveFetchInProgress)return;liveFetchInProgress=true;
      try{
-      const response=await fetch("/api/live-aircraft?airport="+encodeURIComponent(currentAirport)+"&radius=50",{cache:"no-store"});
+      const response=await fetch("/api/live-aircraft?airport="+encodeURIComponent(currentAirport)+"&radius=100",{cache:"no-store"});
       const data=await response.json();
       if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
       if(!Array.isArray(data.aircraft))throw new Error("Unexpected live data format");
-      aircraft=data.aircraft.filter(a=>Number.isFinite(a.lat)&&Number.isFinite(a.lon)&&a.alt_baro!=="ground"&&(((Number.isFinite(a.alt_baro)&&a.alt_baro>150)||(Number.isFinite(a.alt_geom)&&a.alt_geom>150))&&Number.isFinite(a.track)&&Number.isFinite(a.gs)&&a.gs>35)).map(normalizeLiveAircraft);
+      aircraft=data.aircraft.filter(a=>{if(!Number.isFinite(a.lat)||!Number.isFinite(a.lon)||a.alt_baro==="ground")return false;const baro=Number.isFinite(a.alt_baro)?a.alt_baro:null;const geom=Number.isFinite(a.alt_geom)?a.alt_geom:null;const altitude=baro!==null?baro:geom; if(altitude!==null)return altitude>150;return Number.isFinite(a.gs)&&a.gs>60&&Number.isFinite(a.track);}).map(normalizeLiveAircraft);
       renderAircraftMarkers();
       hasConnected=true;
       document.getElementById("feedStatus").textContent="LIVE ADS-B · "+data.source;
       document.getElementById("feedDot").style.background="var(--green)";
-      document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · Refresh every 8 seconds · airborne aircraft only · select any aircraft for route/photo references.';
+      document.getElementById("mapNote").innerHTML='LIVE POSITIONS · '+esc(data.airportName)+' · Source: <a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol</a> · 100 NM scan · Refresh every 8 seconds · airborne aircraft only · select any aircraft for route/photo references.';
       if(selectedId){if(aircraft.some(a=>a.id===selectedId)){updateSelectedStats(aircraft.find(a=>a.id===selectedId));}else{selectedId=null;document.getElementById("panelTitle").textContent="Select an aircraft";document.getElementById("details").innerHTML='<div class="empty">Select a live aircraft marker to inspect it and collect it into your hangar.</div>';}}
      }catch(error){
       // A temporary provider failure must not erase the last known aircraft or the inspector.

@@ -84,7 +84,8 @@ window.addEventListener("load", async function () {
     osmTiles.on("tileerror",()=>{if(fallbackTilesAdded)return;fallbackTilesAdded=true;map.removeLayer(osmTiles);L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);});
     const markers={};
     const airportCenters={RJTT:[35.5494,139.7798],RJAA:[35.772,140.3929],RJBB:[34.4347,135.244],WSSS:[1.3644,103.9915],EGLL:[51.47,-0.4543],KJFK:[40.6413,-73.7781]};
-    let currentAirport="RJTT",hasConnected=false,liveFetchInProgress=false;\n    const aircraftInfoCache={};
+    let currentAirport="RJTT",hasConnected=false,liveFetchInProgress=false;
+    const aircraftInfoCache={};
     const typeNames={A20N:"Airbus A320neo",A21N:"Airbus A321neo",A320:"Airbus A320",A321:"Airbus A321",A332:"Airbus A330-200",A333:"Airbus A330-300",A359:"Airbus A350-900",A35K:"Airbus A350-1000",A388:"Airbus A380-800",B738:"Boeing 737-800",B38M:"Boeing 737 MAX 8",B789:"Boeing 787-9",B788:"Boeing 787-8",B78X:"Boeing 787-10",B77W:"Boeing 777-300ER",B77L:"Boeing 777F",B744:"Boeing 747-400",B748:"Boeing 747-8"};
     function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
     function normalizeLiveAircraft(raw){

@@ -176,9 +176,23 @@ async function aircraftInfo(url, res) {
       });
       if (r.ok) {
         const j = await r.json();
-        const pages = Object.values(j?.query?.pages || {});
-        const usable = pages.find(p => p.imageinfo?.[0]?.thumburl && /\.(jpe?g|png|webp)/i.test(p.title || ""));
-        if (usable) {
+        const pages = Object.values(j?.query?.pages || {}).filter(p => p.imageinfo?.[0]?.thumburl && /\.(jpe?g|png|webp)/i.test(p.title || ""));
+        const normalize = value => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const titleTokens = normalize([airline, aircraftType, reg, callsign].join(" "));
+        const terms = titleTokens.split(" ").filter(t => t.length > 2);
+        const scored = pages.map(p => {
+          const title = normalize(p.title);
+          let score = 0;
+          if (reg && title.includes(normalize(reg))) score += 14;
+          if (airline && airline !== "Operator not verified" && title.includes(normalize(airline))) score += 10;
+          if (aircraftType && title.includes(normalize(aircraftType))) score += 8;
+          for (const term of terms) if (title.includes(term)) score += 1;
+          if (/aircraft|airliner|airlines|livery|a320|a321|a330|a350|a380|737|747|757|767|777|787/i.test(p.title || "")) score += 2;
+          return { page: p, score };
+        }).sort((a,b) => b.score-a.score);
+        const best = scored[0];
+        if (best && best.score >= 3) {
+          const usable = best.page;
           const info = usable.imageinfo[0];
           result.photo = info.thumburl;
           result.photoLink = info.descriptionurl || ("https://commons.wikimedia.org/wiki/" + encodeURIComponent(usable.title.replace(/ /g, "_")));
